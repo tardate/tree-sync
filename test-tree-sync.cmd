@@ -1,6 +1,7 @@
 @echo off
-echo tree-sync.pl test script for Windows
-echo $Id: test-tree-sync.cmd,v 1.4 2007/04/21 05:28:21 paulg Exp $
+echo A very simple tree-sync.pl test script for Windows
+echo Tests most of the tree-sync functions assuming an ActivePerl environment
+echo This should probably be a Perl script itself ... but hey, so many hours in the day only!
 echo ----------------------------------------------------------------
 
 setlocal
@@ -18,11 +19,11 @@ set srcDir=%TEMP%
 set destDir=%TEMP%
 rem                     Also, set scriptDrive and srcDrive if the srcDir is on 
 rem                     different drive from where this script is executed
-set scriptDrive=c:
+set scriptDrive=d:
 set srcDrive=c:
 rem END CUSTOMISATION NOTE
 
-set scriptName=d:\mydocs\mydev\tree-sync\tree-sync.pl
+set scriptName=tree-sync.pl
 set srcFolder=ts-test-src
 set destFolder=ts-test-dest
 set srcRoot=%srcDir%\%srcFolder%
@@ -278,7 +279,7 @@ echo "test9+10 modified on dest" >> "%destRoot%\dir 1\file 3.txt"
 rem change drive/directory
 %srcDrive%
 cd %srcRoot%
-perl %scriptName% %opts% .\ ..\%destFolder%\ >> %log%
+perl %scriptDrive%%scriptName% %opts% .\ ..\%destFolder%\ >> %log%
 
 if %grepstatus% == 0 goto grepcheck10
 echo              (not checking file explicitly with grep)
@@ -322,7 +323,103 @@ echo              ... fail. Error in sync: Check results
 echo              ... fail. Error in sync: Check results >> %log%
 goto end
 
+
 :test12
+echo ============ Test 12: Test for sync of read-only files
+echo              Expected behaviour: read-only files should sync properly
+echo ============ Test 12: Test for sync of read-only files >> %log%
+echo              Expected behaviour: read-only files should sync properly >> %log%
+set f="%srcRoot%\file 5.txt"
+set fd="%destRoot%\file 5.txt"
+echo "Test 12 attrib +R set on source" >> %f%
+attrib +R %f%
+perl %scriptName% %opts% %srcRoot%\ %destRoot%\ >> %log% 
+attrib -R %f%
+sleep 3
+echo "Test 12 OK changed after attrib +R set on source" >> %f%
+attrib +R %f%
+perl %scriptName% %opts% %srcRoot%\ %destRoot%\ >> %log% 
+
+if %grepstatus% == 0 goto grepcheck12
+echo              (not checking file explicitly with grep)
+if not exist %fd% goto fail12
+echo              ... pass
+echo              ... pass >> %log%
+goto test13
+:grepcheck12
+echo              (checking file explicitly with grep)
+grep -c "Test 12 OK" %fd% > nul
+if %errorlevel% == 1 goto fail12
+echo              ... pass
+goto test13
+:fail12
+echo              ... fail. Error in sync: Check results
+echo              ... fail. Error in sync: Check results >> %log%
+goto end
+
+:test13
+echo ============ Test 13: Test for sync of read-write file where dest has been made read-only
+echo              Expected behaviour: files should sync properly (-force by default)
+echo ============ Test 13: Test for sync of read-write file where dest has been made read-only >> %log%
+echo              Expected behaviour: files should sync properly (-force by default) >> %log%
+set f="%srcRoot%\file 6.txt"
+set fd="%destRoot%\file 6.txt"
+echo "Test 13 created read-write on source" >> %f%
+perl %scriptName% %opts% %srcRoot%\ %destRoot%\ >> %log% 
+attrib +R %fd%
+sleep 3
+echo "Test 13 OK changed after attrib +R set on dest" >> %f%
+perl %scriptName% %opts% %srcRoot%\ %destRoot%\ >> %log% 
+
+if %grepstatus% == 0 goto grepcheck13
+echo              (not checking file explicitly with grep)
+if not exist %fd% goto fail13
+echo              ... pass
+echo              ... pass >> %log%
+goto test14
+:grepcheck13
+echo              (checking file explicitly with grep)
+grep -c "Test 13 OK" %fd% > nul
+if %errorlevel% == 1 goto fail13
+echo              ... pass
+goto test14
+:fail13
+echo              ... fail. Error in sync: Check results
+echo              ... fail. Error in sync: Check results >> %log%
+goto end
+
+:test14
+echo ============ Test 14: Test for non-sync of read-write file where dest has been made read-only and -noforce specified
+echo              Expected behaviour: files should not sync (-noforce)
+echo ============ Test 14: Test for non-sync of read-write file where dest has been made read-only and -noforce specified >> %log%
+echo              Expected behaviour: files should not sync (-noforce) >> %log%
+set f="%srcRoot%\file 6.txt"
+set fd="%destRoot%\file 6.txt"
+echo "Test 14 created read-write on source" >> %f%
+perl %scriptName% %opts% %srcRoot%\ %destRoot%\ >> %log% 
+attrib +R %fd%
+sleep 3
+echo "Test 14 OK changed after attrib +R set on dest and -noforce" >> %f%
+perl %scriptName% %opts% -noforce %srcRoot%\ %destRoot%\ >> %log% 
+
+if %grepstatus% == 0 goto grepcheck14
+echo              (not checking file explicitly with grep)
+if not exist %fd% goto fail14
+echo              ... pass
+echo              ... pass >> %log%
+goto test15
+:grepcheck14
+echo              (checking file explicitly with grep)
+grep -c "Test 14 OK" %fd% > nul
+if not %errorlevel% == 1 goto fail13
+echo              ... pass
+goto test15
+:fail14
+echo              ... fail. Error in sync: Check results
+echo              ... fail. Error in sync: Check results >> %log%
+goto end
+
+:test15
 
 :cleanup
 goto end

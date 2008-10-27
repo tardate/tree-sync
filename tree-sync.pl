@@ -5,7 +5,7 @@
 tree-sync.pl - sync two directories recursively. The goal is to bring two trees exactly the same. However, tree-sync.pl does not perform any copy operation by default (it generates a command file instead). The user has the opportunity to exam the command file before real copy operations happen.
 
 =head1 VERSION
-Version 2.2 Modified $Date: 2007/04/21 05:28:21 $ 
+Version 2.4 Modified $Date: 2008/10/26 20:58:00 $ 
 
 =head1 DESCRIPTION
 
@@ -25,16 +25,22 @@ Run "tree-sync.pl -help" to find out command-line options.
 To download, visit: 
   http://www.perl.com/CPAN 
   http://www.perl.com/CPAN/authors/id/P/PA/PAULPG/tree-sync/
-
+Sources are now managed on github.com. To download, or join the project, visit:
+  http://github.com/tardate/tree-sync/
+  
+  
 Release 1 by Chang Liu (liu@ics.uci.edu | changliu@acm.org)
 Copyright (c) 2000 Chang  Liu. All rights reserved.  
 License: GPL: GNU General Public License (http://www.gnu.org/copyleft/gpl.html). 
 
-Release 2 by Paul Gallagher (gallagher.paul@gmail.com)
+Release 2.0-2.2 by Paul Gallagher (gallagher.paul@gmail.com)
 Note: since attempts to contact the author of Release 1 have unfortunately failed
       to date, this version has been released without review from the original author.
 
-Release 3 by Dave Stafford (dave.stafford@globis.net)
+Release 2.3 by Dave Stafford (dave.stafford@globis.net)
+
+Release 2.4 by incorporates changes by Dave Stafford (dave.stafford@globis.net)
+      and Paul Gallagher (gallagher.paul@gmail.com)
 
 
 =head1 SYNCHRONISATION RULES
@@ -81,20 +87,31 @@ Sync Notes:
 
 =head1 CHANGES
 
+From Version 2.3 to Version 2.4:
+
+Refinements for 'ignore' operation.
+Moved to github hosting
+Introduced read-only file handling
+
+ 
 From Version 2.2 to Version 2.3:
+
 Added option 'diff' to view only changes 
 Added option 'ignore' to exclude certain extensions
 Added option 'brief' to remove src/dst directories in report view to make cleaner output
+
 
 From Version 2.1 to Version 2.2:
 
 1. fixed handling of filenames that contain special characters such as @, $ and quotes
 2. fixed handling of filenames that contain regex special characters
 
+
 From Version 2.0 to Version 2.1:
 
 1. changed copy routine to force a copy of access/modified times. This change was needed because I discovered modification
    times are not copied automatically on most	filesystems (other than windows).
+
 
 From Version 1.0 to Version 2.0:
 
@@ -169,7 +186,7 @@ name/  : it is a directory
 use strict;
 use warnings;
 
-my $VERSION = 2.3;
+my $VERSION = 2.4;
 
 ############# USAGE ##############################
 #
@@ -193,7 +210,8 @@ OPTIONS:
     [-brief]       make report cleaner by removing src/dst directories
     [-ignore EXT]  comma separated list of extensions to ignore
     [-verbose]     default is false
-    [-diff]        show only differences default is false
+    [-diff]        show only differences. Default is false
+    [-force | -noforce] forces overwrite of read-only files. Default is -force
     [-cmd SYNC-CMD-FILENAME] default is sync-now.pl. 
     [-run]         runs the sync routine immediately, overrides -cmd option. default is false
     [-width SCREEN-WIDTH] default is 80
@@ -205,13 +223,14 @@ PARAMETERS:
     DIR2 = target directory. Must be a directory. Will br created if it does not exist.
 
 EXAMPLE:
-    c:/>perl tree-sync.pl -cmd mysync.pl /home/chang/work/prj /mnt/f/backup/prj
+    c:/> perl tree-sync.pl -run -force "c:\\My Documents" d:\\backup\\mydocs
 or
-    %perl tree-sync.pl -width 200 -verbose /home/chang/work/prj /mnt/f/backup/prj
+    % perl tree-sync.pl -cmd mysync.pl -width 200 -verbose /home/chang/work/prj /mnt/f/backup/prj
 
 After that:
-    %cat sync-now.pl
-    %perl sync-now.pl
+    % cat sync-now.pl
+    % perl sync-now.pl
+    
 NOTE:
 It is recommended you DO NOT use the -run option until you have first tested using -cmd.
 Review the generated script file and report to verify that the sync is performing correctly.
@@ -219,7 +238,7 @@ Review the generated script file and report to verify that the sync is performin
 
 END_OF_USAGE
 
-	print "Version: $VERSION   ".'Last modified: $Date: 2007/04/21 05:28:21 $'."\n";
+	print "Version: $VERSION   ".'Last modified: $Date: 2008/10/26 20:58:00 $'."\n";
     exit;
 }
 
@@ -249,6 +268,7 @@ my $opt_run;
 my $opt_diff;
 my $opt_ignore;
 my $opt_brief;
+my $opt_force = 1;
 my $mtimeDiffTolerance = 2;
 
 GetOptions("verbose" => \$opt_verbose,
@@ -261,7 +281,8 @@ GetOptions("verbose" => \$opt_verbose,
            "run" => \$opt_run,
            "brief" => \$opt_brief,
            "diff" => \$opt_diff,
-           "ignore=s" => \$opt_ignore
+           "ignore=s" => \$opt_ignore,
+           "force!" => \$opt_force
 	   );
 
 print "DEBUG:tree-sync.pl VERSION: $VERSION\n" if $opt_debug;
@@ -274,6 +295,7 @@ if ($opt_ignore) {
 	  $opt_ignore.='$';
 }
 ## END ADDED DGS
+
 my $sourceDirectory = shift or usage("Source not specified");
 my $targetDirectory = shift or usage("Target not specified");
 
@@ -385,6 +407,7 @@ sub report
 	$right = shift;
 	my $type = shift;
 	my $diff = shift;
+  return if $type==1 && $opt_brief;
 
   $left=~s/$sourceDirectory//  if $opt_brief;
   $right=~s/$targetDirectory// if $opt_brief;
@@ -579,11 +602,13 @@ sub create_sync_script
 #
 use File::stat;
 use File::Copy;
-# subroutine to copt access/modified times from source to dest file
+# subroutine to copy access/modified times from source to dest file
 sub copyWithTime {
 	my (\$srcFile, \$destFile) = \@_;
 	my \$srcAtime=stat(\$srcFile)->atime;
-	my \$srcMtime=stat(\$srcFile)->mtime;
+	my \$srcMtime=stat(\$srcFile)->mtime; 
+	# allow write on dest if file present
+	chmod stat(\$destFile)->mode | 0222, \$destFile if ((-e "\$destFile" ) && !(-d "\$destFile" )); 
 	copy(\$srcFile, \$destFile);
 	utime \$srcAtime, \$srcMtime, \$destFile;
 	return;
@@ -685,6 +710,8 @@ sub copyWithTime {
 	my ($srcFile, $destFile) = @_;
 	my $srcAtime=stat($srcFile)->atime;
 	my $srcMtime=stat($srcFile)->mtime;
+	# allow write on dest if file present and "force" specified
+	chmod stat($destFile)->mode | 0222, $destFile if (($opt_force) && (-e "$destFile" ) && !(-d "$destFile" )); 
 	copy($srcFile, $destFile);
 	utime $srcAtime, $srcMtime, $destFile;
 	return;
